@@ -1,45 +1,48 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const mongoose = require('mongoose');
-
-// Configuração otimizada para MongoDB Driver v4+
-const connectDB = async () => {
-  try {
-    console.log('🔄 Conectando ao banco natoscar...');
-    
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 30000,
-    });
-
-    console.log(`✅ Conectado com sucesso ao banco: ${mongoose.connection.name}`);
-    console.log(`🛠  Host: ${mongoose.connection.host}`);
-  } catch (err) {
-    console.error('❌ ERRO na conexão com MongoDB:', err);
-    process.exit(1);
-  }
-};
+const cors = require('cors');
 
 const app = express();
 
-// Configuração de CORS
+// Configuração robusta de CORS
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
 
-// Conectar ao banco
+// Conexão com tratamento de erro aprimorado
+const connectDB = async () => {
+  try {
+    console.log('🔄 Conectando ao MongoDB Atlas...');
+    
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000, // 10 segundos
+      socketTimeoutMS: 45000, // 45 segundos
+      connectTimeoutMS: 10000 // 10 segundos
+    });
+
+    console.log('✅ Conectado ao MongoDB Atlas com sucesso!');
+  } catch (err) {
+    console.error('❌ Falha na conexão com MongoDB:', err);
+    process.exit(1);
+  }
+};
+
+// Conectar ao iniciar
 connectDB();
 
 // Middleware de verificação de conexão
 app.use((req, res, next) => {
   if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ 
-      error: 'Database not connected',
-      status: mongoose.connection.readyState
+    console.error('⚠️ Banco de dados desconectado!');
+    return res.status(503).json({
+      error: 'Database connection unstable',
+      dbStatus: mongoose.connection.readyState,
+      suggestion: 'Check MongoDB Atlas connection settings'
     });
   }
   next();
@@ -47,23 +50,11 @@ app.use((req, res, next) => {
 
 // Rotas
 app.get('/', (req, res) => {
-  res.send('🚗 Natos Car API - Online');
-});
-
-app.get('/health', (req, res) => {
   res.json({
-    status: 'healthy',
-    dbStatus: mongoose.connection.readyState,
+    status: 'online',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date()
   });
 });
-
-// Iniciar servidor apenas localmente
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Servidor rodando em http://localhost:${PORT}`);
-  });
-}
 
 module.exports = app;
